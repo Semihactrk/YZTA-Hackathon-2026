@@ -1,14 +1,19 @@
 from fastapi import FastAPI
-from agents import get_chat_response
+from pydantic import BaseModel
+from agents import get_agent_response
 
-# Uvicorn tam olarak bu 'app' ismini arıyor
 app = FastAPI()
 
-@app.get("/")
-def read_root():
-    return {"durum": "Toprak Ana API Çalışıyor"}
+
+class ChatRequest(BaseModel):
+    message: str
 
 @app.post("/chat")
-async def chat(message: str):
-    response = get_chat_response(message)
-    return {"cevap": response}
+async def chat_endpoint(request: ChatRequest):
+
+    reply = get_agent_response(request.message)
+    return {"reply": reply}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

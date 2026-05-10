@@ -96,3 +96,23 @@ def init_db():
 if __name__ == "__main__":
     init_db()
     print("Veritabanı oluşturuldu ve başlangıç verileri eklendi!")
+
+
+def get_product_stock(urun_adi: str):
+    """Verilen ürünün stok miktarını döndürür."""
+    db = SessionLocal()
+    urun = db.query(Urun).filter(Urun.isim.contains(urun_adi)).first()
+    db.close()
+    if urun:
+        return f"{urun.isim} stoğu: {urun.stok} adet. Birim fiyat: {urun.birim_fiyat} TL."
+    return "Ürün bulunamadı."
+
+def get_order_status(siparis_id: int):
+    """Siparişin durumunu ve kargo bilgisini döndürür."""
+    db = SessionLocal()
+    siparis = db.query(Siparis).filter(Siparis.id == siparis_id).first()
+    db.close()
+    if siparis:
+        kargo = siparis.kargo_no if siparis.kargo_no else "Henüz atanmadı"
+        return f"Sipariş Durumu: {siparis.durum}. Kargo No: {kargo}"
+    return "Sipariş bulunamadı."
