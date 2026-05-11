@@ -30,7 +30,7 @@ class Urun(Base):
     kooperatif_id = Column(Integer, ForeignKey("kooperatifler.id"))
 
     kooperatif = relationship("Kooperatif", back_populates="urunler")
-    siparisler = relationship("Siparis", back_populates="urun")
+    siparisler = relationship("Siparis", back_populates="urun", cascade="all, delete-orphan")
 
 class Siparis(Base):
     __tablename__ = "siparisler"
