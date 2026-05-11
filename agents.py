@@ -9,9 +9,8 @@ load_dotenv()
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Gemini için veritabanı bağlantılı wrapper fonksiyonlar
+# db baglantili araclar
 def check_product_stock_tool(item_name: str) -> dict:
-    """Verilen ürün ismine göre stok bilgisini kontrol eder."""
     db = database.SessionLocal()
     try:
         return crud.get_product_stock(item_name, db)
@@ -19,7 +18,6 @@ def check_product_stock_tool(item_name: str) -> dict:
         db.close()
 
 def check_order_status_tool(order_id: int) -> dict:
-    """Sipariş ID'sine göre kargo ve sipariş durumunu kontrol eder."""
     db = database.SessionLocal()
     try:
         return crud.check_order_status(order_id, db)
@@ -27,29 +25,71 @@ def check_order_status_tool(order_id: int) -> dict:
         db.close()
 
 def predict_stock_depletion_tool() -> list:
-    """Satış hızına (velocity) dayalı olarak stokların kaç gün içinde tükeneceğini tahmin eder."""
     db = database.SessionLocal()
     try:
         return crud.predict_stock_depletion(db)
     finally:
         db.close()
 
-instruction = """
-Sen Toprak Ana Kadın Kooperatifi'nin Akıllı Asistanısın.
+# satis ajani - sadece urun/stok
+sales_instruction = """
+Sen Toprak Ana Kadın Kooperatifi'nin 'Satış ve Ürün' Uzmanısın.
 Görevlerin:
-1. Ürün bilgisi/stok sorulursa 'check_product_stock_tool' fonksiyonunu kullan. Stok 10'un altındaysa 'KRİTİK STOK' uyarısı yap.
-2. Sipariş durumu sorulursa 'check_order_status_tool' fonksiyonunu kullan. Durum 'Gecikti' ise özür dile ve 'KOOP10' kuponunu sun.
-3. Hangi stogun ne zaman biteceği, stok tahmini veya satış hızı sorulursa 'predict_stock_depletion_tool' fonksiyonunu kullan. 7 günden az kalan ürünler için 'ACİL ÜRETİM' uyarısı yap.
+1. Ürün bilgisi veya stok sorulursa 'check_product_stock_tool' fonksiyonunu kullan.
+2. Stok 10'un altındaysa mutlaka 'KRİTİK STOK' uyarısı yap.
+3. Sipariş veya kargo ile ilgilenme.
 """
-
-chat = client.chats.create(
-    model="gemini-2.5-flash", # Updated to a valid model name
+sales_agent = client.chats.create(
+    model="gemini-3.1-flash-lite",
     config=types.GenerateContentConfig(
-        system_instruction=instruction,
-        tools=[check_product_stock_tool, check_order_status_tool, predict_stock_depletion_tool],
+        system_instruction=sales_instruction,
+        tools=[check_product_stock_tool],
     )
 )
 
-def get_agent_response(user_input):
-    response = chat.send_message(user_input)
-    return response.text
+# operasyon ajanı - gecikme ve analiz uzmanı
+ops_instruction = """
+Sen Toprak Ana Kadın Kooperatifi'nin 'Operasyon ve Analitik' Uzmanısın.
+ÖNCELİKLİ GÖREVİN:
+1. Sipariş durumu sorulursa 'check_order_status_tool' kullan[cite: 2, 22].
+2. EĞER sipariş durumu 'Gecikti' ise:
+   - Çok içten ve nazik bir dille özür dile.
+   - Telafi olarak müşteriye özel 'KOOP10' kupon kodunu tanımlandığını belirt[cite: 2, 35].
+   - Gecikme nedenini (operasyonel yoğunluk vb.) belirterek güven tazele.
+3. Analitik Sorgular: Stok tahmini veya satış hızı sorulursa 'predict_stock_depletion_tool' kullan[cite: 2, 26].
+   - 7 günden az kalan ürünler için mutlaka 'ACİL ÜRETİM' uyarısı yap.
+"""
+ops_agent = client.chats.create(
+    model="gemini-3.1-flash-lite",
+    config=types.GenerateContentConfig(
+        system_instruction=ops_instruction,
+        tools=[check_order_status_tool, predict_stock_depletion_tool],
+    )
+)
+
+
+def get_agent_response(user_input: str) -> str:
+    orchestrator_prompt = f"""
+    Gelen mesaja gore sadece SATIS veya OPERASYON yaz.
+
+    KRITIK KURALLAR:
+    - urun var mi, fiyat, anlik stok durumu -> SATIS
+    - kargo, siparis durumu, KOOP10 kuponu -> OPERASYON
+    - TAHMIN, ANALIZ, URETIM PLANI, NE ZAMAN BITER -> OPERASYON
+
+    Mesaj: {user_input}
+    """
+
+    # 1. Önce karar veriliyor
+    routing_decision = client.models.generate_content(
+        model="gemini-3.1-flash-lite",
+        contents=orchestrator_prompt,
+    ).text.strip().upper()
+
+    print(f"--> yonlendirme: {routing_decision}")
+
+    # 2. Karara göre ajana gidiliyor ve fonksiyon burada bitiyor
+    if "OPERASYON" in routing_decision:
+        return ops_agent.send_message(user_input).text
+    else:
+        return sales_agent.send_message(user_input).text

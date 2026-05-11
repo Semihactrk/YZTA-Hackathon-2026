@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from agents import get_agent_response
 import crud
 import database
+from database import Urun, Siparis
 
 app = FastAPI()
 
@@ -32,6 +33,22 @@ def top_selling_products(db: Session = Depends(get_db)):
 def stock_predictions(db: Session = Depends(get_db)):
     """Satış hızına dayalı stok bitiş tahmini yapar."""
     return crud.predict_stock_depletion(db)
+@app.get("/alerts")
+def get_system_alerts(db: Session = Depends(get_db)):
+    """Taha'nın dashboard'da kırmızı uyarıları göstereceği endpoint"""
+    # 1. Kritik Stoklu Ürünler (Stok < 10)
+    kritik_urunler = db.query(Urun).filter(Urun.stok < 10).all()
+    stok_alarmlari = [{"urun_adi": u.isim, "kalan_stok": u.stok} for u in kritik_urunler]
+
+    # 2. Geciken Siparişler
+    geciken_siparisler = db.query(Siparis).filter(Siparis.durum == "Gecikti").all()
+    kargo_alarmlari = [{"siparis_id": s.id, "urun_adi": s.urun.isim} for s in geciken_siparisler]
+
+    return {
+        "stok_alarmlari": stok_alarmlari,
+        "kargo_alarmlari": kargo_alarmlari,
+        "toplam_risk_sayisi": len(stok_alarmlari) + len(kargo_alarmlari)
+    }
 
 if __name__ == "__main__":
     import uvicorn
