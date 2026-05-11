@@ -190,4 +190,4 @@ curl http://localhost:8000/alerts
 
 ## 👥 Ekip
 
-YZTA Hackathon 2026 katılımcıları tarafından geliştirilmiştir.
+YZTA Hackathon 2026 307. Grup tarafından geliştirilmiştir.
