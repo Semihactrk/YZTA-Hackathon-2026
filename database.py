@@ -1,5 +1,7 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.sql import func
+from datetime import datetime, timedelta, timezone
 
 DATABASE_URL = "sqlite:///./toprak_ana.db"
 
@@ -38,6 +40,7 @@ class Siparis(Base):
     adet = Column(Integer, default=1)
     durum = Column(String, default="Hazırlanıyor")  # Örn: Hazırlanıyor, Kargoda, Teslim Edildi
     kargo_no = Column(String, nullable=True)
+    siparis_tarihi = Column(DateTime, default=func.now())
 
     urun = relationship("Urun", back_populates="siparisler")
 
@@ -86,6 +89,30 @@ def seed_data():
     ]
 
     db.add_all(urunler)
+    db.commit()
+
+    # Siparişleri Ekle (Analitik tahminler ve en çok satanlar testi için)
+    simdi = datetime.now(timezone.utc)
+    siparisler = [
+        # Nar ekşisi (Acil stok bitişi uyarısı tetiklensin diye stok az, satış yüksek)
+        Siparis(urun_id=urunler[7].id, adet=40, durum="Teslim Edildi", kargo_no="TR123456", siparis_tarihi=simdi - timedelta(days=12)),
+        Siparis(urun_id=urunler[7].id, adet=32, durum="Kargoda", kargo_no="TR123457", siparis_tarihi=simdi - timedelta(days=5)),
+        
+        # Samandağ Biberi (En çok satanlara girmesi için)
+        Siparis(urun_id=urunler[6].id, adet=150, durum="Teslim Edildi", siparis_tarihi=simdi - timedelta(days=20)),
+        Siparis(urun_id=urunler[6].id, adet=120, durum="Teslim Edildi", siparis_tarihi=simdi - timedelta(days=2)),
+        
+        # Defne Sabunu
+        Siparis(urun_id=urunler[0].id, adet=80, durum="Teslim Edildi", siparis_tarihi=simdi - timedelta(days=15)),
+        
+        # İpek Şal
+        Siparis(urun_id=urunler[1].id, adet=10, durum="Hazırlanıyor", siparis_tarihi=simdi - timedelta(days=1)),
+        
+        # Sürk Peyniri
+        Siparis(urun_id=urunler[3].id, adet=25, durum="Gecikti", siparis_tarihi=simdi - timedelta(days=10)),
+    ]
+    
+    db.add_all(siparisler)
     db.commit()
     db.close()
 

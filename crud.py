@@ -82,3 +82,42 @@ def generate_whatsapp_template(urun_adi: str, mevcut_stok: int, hedef_stok: int 
         f"Ellerinize sağlık, bereketli üretimler dileriz! 🙏"
     )
     return sablon
+
+def predict_stock_depletion(db: Session, days_history: int = 30):
+    """
+    Satış hızına dayalı stok bitiş tahmini yapar.
+    (Siparişlerin son 'days_history' günde yapıldığını varsayarak günlük hızı bulur)
+    """
+    # Her ürün için toplam satışı ve mevcut stoğu çekiyoruz
+    sonuclar = db.query(
+        Urun.isim,
+        Urun.stok,
+        func.sum(Siparis.adet).label('toplam_satis')
+    ).join(Siparis, Urun.id == Siparis.urun_id) \
+     .group_by(Urun.id).all()
+    
+    tahminler = []
+    for isim, stok, satis in sonuclar:
+        if satis is None or satis == 0:
+            continue
+        
+        # Günlük ortalama satış hızı
+        gunluk_hiz = satis / days_history
+        
+        # Stok kaç gün yeter?
+        kalan_gun = int(stok / gunluk_hiz) if gunluk_hiz > 0 else 999
+        
+        durum = "Kritik (Acil Üretim)" if kalan_gun <= 7 else "Normal"
+        
+        tahminler.append({
+            "urun_adi": isim,
+            "mevcut_stok": stok,
+            "gunluk_satis_hizi": round(gunluk_hiz, 2),
+            "kalan_gun_tahmini": kalan_gun,
+            "durum": durum
+        })
+        
+    # Kalan güne göre aciliyet sırasına diz (en çabuk bitecekler en üstte)
+    tahminler.sort(key=lambda x: x["kalan_gun_tahmini"])
+    return tahminler
+
