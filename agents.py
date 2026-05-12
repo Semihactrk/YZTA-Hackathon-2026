@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 import database
 import crud
+from vector_db import vector_store
 
 load_dotenv()
 
@@ -31,19 +32,32 @@ def predict_stock_depletion_tool() -> list:
     finally:
         db.close()
 
+def get_producer_story_tool(query: str) -> dict:
+    """
+    Kullanıcı üretici kadınların, kooperatiflerin hikayelerini veya geçmişini sorduğunda bu aracı kullanarak Vector DB (Bilgi Bankası) üzerinde semantik arama yap.
+    """
+    try:
+        results = vector_store.search(query, top_k=1)
+        if isinstance(results, str):
+            return {"hata": results}
+        return results[0] if results else {"mesaj": "Hikaye bulunamadı."}
+    except Exception as e:
+        return {"hata": str(e)}
+
 # satis ajani - sadece urun/stok
 sales_instruction = """
-Sen Toprak Ana Kadın Kooperatifi'nin 'Satış ve Ürün' Uzmanısın.
+Sen Toprak Ana Kadın Kooperatifi'nin 'Satış ve Ürün' Uzmanısın, ayrıca üreticilerin hikayelerini de bilirsin.
 Görevlerin:
-1. Ürün bilgisi veya stok sorulursa 'check_product_stock_tool' fonksiyonunu kullan.
-2. Stok 10'un altındaysa mutlaka 'KRİTİK STOK' uyarısı yap.
-3. Sipariş veya kargo ile ilgilenme.
+1. Ürün bilgisi veya stok sorulursa 'check_product_stock_tool' kullan.
+2. Üretici kadınların veya kooperatiflerin hikayeleri sorulursa 'get_producer_story_tool' kullanıp onlara ilham verici hikayelerini anlat.
+3. Stok 10'un altındaysa mutlaka 'KRİTİK STOK' uyarısı yap.
+4. Sipariş veya kargo ile ilgilenme.
 """
 sales_agent = client.chats.create(
     model="gemini-3.1-flash-lite",
     config=types.GenerateContentConfig(
         system_instruction=sales_instruction,
-        tools=[check_product_stock_tool],
+        tools=[check_product_stock_tool, get_producer_story_tool],
     )
 )
 
@@ -74,6 +88,7 @@ def get_agent_response(user_input: str) -> str:
 
     KRITIK KURALLAR:
     - urun var mi, fiyat, anlik stok durumu -> SATIS
+    - hikaye, kadin ureticiler, kooperatif kim, anlat -> SATIS
     - kargo, siparis durumu, KOOP10 kuponu -> OPERASYON
     - TAHMIN, ANALIZ, URETIM PLANI, NE ZAMAN BITER -> OPERASYON
 
