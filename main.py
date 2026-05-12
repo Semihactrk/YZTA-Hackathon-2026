@@ -9,6 +9,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+# Dependency
+def get_db():
+    db = database.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.get("/products")
+async def get_all_products(db: Session = Depends(get_db)):
+    # Başına database. ekleyerek tam yolunu gösteriyoruz
+    products = db.query(database.Urun).all()
+    return products
+
 # CORS Ayarları:
 app.add_middleware(
     CORSMiddleware,
@@ -63,3 +77,4 @@ def get_system_alerts(db: Session = Depends(get_db)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
