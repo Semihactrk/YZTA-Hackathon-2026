@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from agents import get_agent_response
 import crud
 import database
-from database import Urun, Siparis
+from database import Urun, Siparis, Kooperatif, AjanLog
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -62,9 +62,12 @@ def get_system_alerts(db: Session = Depends(get_db)):
         "kargo_alarmlari": kargo_alarmlari,
         "toplam_risk_sayisi": len(stok_alarmlari) + len(kargo_alarmlari)
     }
+@app.get("/admin/logs")
+def get_agent_logs(db: Session = Depends(get_db)):
+    """Ajanın adım adım karar ve sohbet kayıtlarını listeler"""
+    return db.query(AjanLog).order_by(AjanLog.tarih.desc()).limit(50).all()
 
 # 5. SERVER START
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

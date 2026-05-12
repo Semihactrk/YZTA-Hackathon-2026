@@ -44,6 +44,15 @@ class Siparis(Base):
 
     urun = relationship("Urun", back_populates="siparisler")
 
+class AjanLog(Base):
+    __tablename__ = "ajan_loglari"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kullanici_mesaji = Column(Text)
+    yonlendirme_karari = Column(String) # SATIS veya OPERASYON
+    ajan_yaniti = Column(Text)
+    tarih = Column(DateTime, default=func.now())
+
 def seed_data():
     db = SessionLocal()
     # Veritabanında zaten veri varsa ekleme yapma

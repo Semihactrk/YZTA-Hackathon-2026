@@ -90,6 +90,22 @@ def get_agent_response(user_input: str) -> str:
 
     # 2. Karara göre ajana gidiliyor ve fonksiyon burada bitiyor
     if "OPERASYON" in routing_decision:
-        return ops_agent.send_message(user_input).text
+        yanit = ops_agent.send_message(user_input).text
     else:
-        return sales_agent.send_message(user_input).text
+        yanit = sales_agent.send_message(user_input).text
+        
+    # Logu veritabanına kaydet
+    db = database.SessionLocal()
+    try:
+        crud.create_agent_log(
+            kullanici_mesaji=user_input,
+            yonlendirme_karari=routing_decision,
+            ajan_yaniti=yanit,
+            db=db
+        )
+    except Exception as e:
+        print(f"Log kaydedilemedi: {e}")
+    finally:
+        db.close()
+        
+    return yanit

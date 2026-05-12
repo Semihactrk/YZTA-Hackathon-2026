@@ -1,6 +1,17 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
-from database import Urun, Siparis, Kooperatif
+from database import Urun, Siparis, Kooperatif, AjanLog
+
+def create_agent_log(kullanici_mesaji: str, yonlendirme_karari: str, ajan_yaniti: str, db: Session):
+    yeni_log = AjanLog(
+        kullanici_mesaji=kullanici_mesaji,
+        yonlendirme_karari=yonlendirme_karari,
+        ajan_yaniti=ajan_yaniti
+    )
+    db.add(yeni_log)
+    db.commit()
+    db.refresh(yeni_log)
+    return yeni_log
 
 def get_product_stock(item_name: str, db: Session):
     """
