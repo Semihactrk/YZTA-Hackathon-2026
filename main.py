@@ -9,39 +9,32 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Dependency
+# 1. CORS AYARLARI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 2. DEPENDENCY
 def get_db():
     db = database.SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+# 3. MODELLER (Pydantic)
+class ChatRequest(BaseModel):
+    message: str
+
+# 4. ENDPOINTLER
 
 @app.get("/products")
 async def get_all_products(db: Session = Depends(get_db)):
-    # Başına database. ekleyerek tam yolunu gösteriyoruz
-    products = db.query(database.Urun).all()
-    return products
-
-# CORS Ayarları:
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Her yerden gelen isteğe izin ver
-    allow_credentials=True,
-    allow_methods=["*"],  # GET, POST vb. tüm metodlara izin ver
-    allow_headers=["*"],  # Tüm headerlara izin ver
-)
-
-# Dependency
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-class ChatRequest(BaseModel):
-    message: str
+    return db.query(Urun).all()
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
@@ -50,21 +43,17 @@ async def chat_endpoint(request: ChatRequest):
 
 @app.get("/analytics/top-selling")
 def top_selling_products(db: Session = Depends(get_db)):
-    """Geçmiş verilere bakarak en çok satan 5 ürünü listeler."""
     return crud.get_top_5_selling_products(db)
 
 @app.get("/analytics/stock-predictions")
 def stock_predictions(db: Session = Depends(get_db)):
-    """Satış hızına dayalı stok bitiş tahmini yapar."""
     return crud.predict_stock_depletion(db)
+
 @app.get("/alerts")
 def get_system_alerts(db: Session = Depends(get_db)):
-    """Taha'nın dashboard'da kırmızı uyarıları göstereceği endpoint"""
-    # 1. Kritik Stoklu Ürünler (Stok < 10)
     kritik_urunler = db.query(Urun).filter(Urun.stok < 10).all()
     stok_alarmlari = [{"urun_adi": u.isim, "kalan_stok": u.stok} for u in kritik_urunler]
 
-    # 2. Geciken Siparişler
     geciken_siparisler = db.query(Siparis).filter(Siparis.durum == "Gecikti").all()
     kargo_alarmlari = [{"siparis_id": s.id, "urun_adi": s.urun.isim} for s in geciken_siparisler]
 
@@ -74,6 +63,7 @@ def get_system_alerts(db: Session = Depends(get_db)):
         "toplam_risk_sayisi": len(stok_alarmlari) + len(kargo_alarmlari)
     }
 
+# 5. SERVER START
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
