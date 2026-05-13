@@ -348,19 +348,7 @@ Aşağıdaki durumlarda otomatik Telegram bildirimi gönderilir:
 - Mock token yerine gerçek **JWT** tabanlı kimlik doğrulama
 - API endpoint'lerinde token doğrulama middleware'i
 - Ortam değişkenlerinin güvenli yönetimi
-
----
-
-## 📸 Uygulama Ekran Görüntüleri
-
-| Mağaza | Admin Dashboard |
-|---|---|
-| Ürün kataloğu, arama, kooperatif filtresi | Özet istatistikler, stok uyarıları |
-
-| AI Chatbot | Analitik |
-|---|---|
-| Satış & Operasyon ajan yönlendirmesi | En çok satanlar, stok tahminleri |
-
+  
 ---
 
 ## 🤝 Katkıda Bulunanlar
