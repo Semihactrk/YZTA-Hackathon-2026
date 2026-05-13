@@ -9,7 +9,6 @@ import requests
 
 
 def send_telegram_alert(message: str):
-    # Bu değişkenlerin os.getenv ile alındığından emin ol
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -22,7 +21,7 @@ def send_telegram_alert(message: str):
 
     try:
         response = requests.post(url, json=payload)
-        return response.json()  # Değişkeni burada kullanarak uyarıyı gideriyoruz
+        return response.json()  
     except Exception as e:
         print(f"Telegram hatası: {e}")
         return {"hata": str(e)}
