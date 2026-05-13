@@ -7,9 +7,7 @@ export interface MockUser {
     role?: string;
 }
 
-interface StoredUser extends MockUser {
-    password: string;
-}
+
 
 interface AuthResult {
     success: boolean;
