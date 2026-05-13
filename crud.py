@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
-from database import Urun, Siparis, Kooperatif, AjanLog  # Semiha'nın database sync görevinden [cite: 5]
+from database import Urun, Siparis, Kooperatif, AjanLog 
 
 
 # --- AJAN VE GÜVENLİK (HERMES) ---
@@ -42,7 +42,7 @@ def check_order_status(order_id: int, db: Session):
 
 # --- BİLGİ BANKASI VE ANALİTİK ---
 def search_coop_story(query: str, db: Session):
-    """Semiha'nın RAG görevinden gelen üretici hikayelerini sorgular[cite: 5]."""
+    """ RAG görevinden gelen üretici hikayelerini sorgular."""
     kooperatifler = db.query(Kooperatif).filter(Kooperatif.hikaye.ilike(f"%{query}%")).all()
     sonuclar = []
     for koop in kooperatifler:
