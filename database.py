@@ -66,7 +66,6 @@ class AjanLog(Base):
 
 def seed_data():
     db = SessionLocal()
-    # Veritabanında zaten veri varsa ekleme yapma
     if db.query(Kooperatif).first():
         # But maybe we don't have an admin, check it
         if not db.query(Kullanici).filter(Kullanici.email == "admin@admin.com").first():
