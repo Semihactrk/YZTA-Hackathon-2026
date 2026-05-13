@@ -37,7 +37,9 @@ class Siparis(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     urun_id = Column(Integer, ForeignKey("urunler.id"))
+    kullanici_id = Column(Integer, default=1) # Mock User ID 
     adet = Column(Integer, default=1)
+    toplam_fiyat = Column(Float, default=0.0)
     durum = Column(String, default="Hazırlanıyor")  # Örn: Hazırlanıyor, Kargoda, Teslim Edildi
     kargo_no = Column(String, nullable=True)
     siparis_tarihi = Column(DateTime, default=func.now())

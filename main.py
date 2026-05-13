@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy.orm import Session
 from agents import get_agent_response
 import crud
@@ -51,11 +52,70 @@ def get_db():
 class ChatRequest(BaseModel):
     message: str
 
+class OrderCreate(BaseModel):
+    urun_id: int
+    adet: int = 1
+    kullanici_id: int = 1
+    musteri_adi: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 # 4. ENDPOINTLER
+
+@app.post("/login")
+def login(req: LoginRequest):
+    # Mock login servisi
+    if req.username == "admin" and req.password == "1234":
+        return {"token": "mock-admin-token", "role": "admin", "kullanici_id": 0}
+    elif req.username == "user" and req.password == "1234":
+        return {"token": "mock-user-token", "role": "customer", "kullanici_id": 1}
+    raise HTTPException(status_code=401, detail="Hatalı kullanıcı adı veya şifre")
 
 @app.get("/products")
 async def get_all_products(db: Session = Depends(get_db)):
     return db.query(Urun).all()
+
+@app.get("/products/{urun_id}")
+def get_product(urun_id: int, db: Session = Depends(get_db)):
+    urun = db.query(Urun).filter(Urun.id == urun_id).first()
+    if not urun:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    return urun
+
+@app.get("/orders")
+def get_orders(kullanici_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(Siparis)
+    if kullanici_id is not None:
+        query = query.filter(Siparis.kullanici_id == kullanici_id)
+    return query.all()
+
+@app.post("/orders", status_code=201)
+def create_order(order: OrderCreate, db: Session = Depends(get_db)):
+    urun = db.query(Urun).filter(Urun.id == order.urun_id).first()
+    if not urun:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    
+    if urun.stok < order.adet:
+        raise HTTPException(status_code=400, detail="Yetersiz stok")
+        
+    yeni_siparis = Siparis(
+        urun_id=order.urun_id,
+        kullanici_id=order.kullanici_id,
+        adet=order.adet,
+        toplam_fiyat=urun.birim_fiyat * order.adet,
+        kargo_no=order.musteri_adi if order.musteri_adi else "Bekliyor",
+        durum="Hazırlanıyor"
+    )
+    
+    # Stok düş
+    urun.stok -= order.adet
+    
+    db.add(yeni_siparis)
+    db.commit()
+    db.refresh(yeni_siparis)
+    return yeni_siparis
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
