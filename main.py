@@ -1,35 +1,20 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
-from sqlalchemy.orm import Session
-from agents import get_agent_response
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, desc
+from agents import get_agent_response, send_telegram_alert
 import crud
 import database
-from database import Urun, Siparis
+from database import Urun, Siparis, Kooperatif, Kullanici, init_db
 from fastapi.middleware.cors import CORSMiddleware
-import requests
 from crud import get_logistics_performance_report
-from agents import send_telegram_alert
-
-
-def send_telegram_alert(message: str):
-    api_token = "8883330952:AAFlrrPKR_EgvOL54vfcDhN3OJLP2be5t3A"
-    chat_id = "7058214912"
-
-    url = f"https://api.telegram.org/bot{api_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": f"🚀 **Toprak Ana Uyarısı:**\n\n{message}",
-        "parse_mode": "Markdown"
-    }
-
-    try:
-        response = requests.post(url, json=payload)
-        return response.json()
-    except Exception as e:
-        print(f"Telegram hatası: {e}")
 
 app = FastAPI()
+
+#Urun fotografları
+app.mount("/urun_foto", StaticFiles(directory="urun_foto"), name="urun_foto")
 
 # 1. CORS AYARLARI
 app.add_middleware(
@@ -48,110 +33,212 @@ def get_db():
     finally:
         db.close()
 
-# 3. MODELLER (Pydantic)
+# 3. STARTUP
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+# 4. MODELLER (Pydantic)
 class ChatRequest(BaseModel):
     message: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+class ProductCreate(BaseModel):
+    isim: str
+    stok: int = 0
+    birim_fiyat: float = 0.0
+    kooperatif_id: Optional[int] = None
 
 class OrderCreate(BaseModel):
     urun_id: int
     adet: int = 1
-    kullanici_id: int = 1
     musteri_adi: Optional[str] = None
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
+# 5. ENDPOINTLER
 
-# 4. ENDPOINTLER
+@app.post("/register")
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    mevcut = db.query(Kullanici).filter(Kullanici.email == req.email).first()
+    if mevcut:
+        raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
+    yeni_kullanici = Kullanici(isim=req.name, email=req.email, sifre=req.password)
+    db.add(yeni_kullanici)
+    db.commit()
+    db.refresh(yeni_kullanici)
+    return {"success": True, "message": "Kayıt başarılı"}
 
 @app.post("/login")
-def login(req: LoginRequest):
-    # Mock login servisi
-    if req.username == "admin" and req.password == "1234":
-        return {"token": "mock-admin-token", "role": "admin", "kullanici_id": 0}
-    elif req.username == "user" and req.password == "1234":
-        return {"token": "mock-user-token", "role": "customer", "kullanici_id": 1}
-    raise HTTPException(status_code=401, detail="Hatalı kullanıcı adı veya şifre")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    kullanici = db.query(Kullanici).filter(Kullanici.email == req.email, Kullanici.sifre == req.password).first()
+    if not kullanici:
+        raise HTTPException(status_code=401, detail="Hatalı kullanıcı adı veya şifre")
+    
+    return {
+        "success": True,
+        "token": f"mock-token-{kullanici.id}",
+        "user": {
+            "id": kullanici.id,
+            "name": kullanici.isim,
+            "email": kullanici.email,
+            "role": kullanici.rol
+        }
+    }
 
+# 5.1 Ürünler (Products)
 @app.get("/products")
-async def get_all_products(db: Session = Depends(get_db)):
-    return db.query(Urun).all()
+def get_all_products(db: Session = Depends(get_db)):
+    rows = db.query(Urun).options(joinedload(Urun.kooperatif)).all()
+    return [
+        {
+            "id": u.id,
+            "isim": u.isim,
+            "stok": u.stok,
+            "birim_fiyat": u.birim_fiyat,
+            "kooperatif_id": u.kooperatif_id,
+            "kooperatif_isim": u.kooperatif.isim if u.kooperatif else None,
+        }
+        for u in rows
+    ]
 
-@app.get("/products/{urun_id}")
-def get_product(urun_id: int, db: Session = Depends(get_db)):
-    urun = db.query(Urun).filter(Urun.id == urun_id).first()
-    if not urun:
+@app.get("/products/{product_id}")
+def get_product(product_id: int, db: Session = Depends(get_db)):
+    u = db.query(Urun).options(joinedload(Urun.kooperatif)).filter(Urun.id == product_id).first()
+    if not u:
         raise HTTPException(status_code=404, detail="Ürün bulunamadı")
-    return urun
+    return {
+        "id": u.id,
+        "isim": u.isim,
+        "stok": u.stok,
+        "birim_fiyat": u.birim_fiyat,
+        "kooperatif_id": u.kooperatif_id,
+        "kooperatif_isim": u.kooperatif.isim if u.kooperatif else None,
+        "kooperatif_hikaye": u.kooperatif.hikaye if u.kooperatif else None,
+        "kooperatif_lokasyon": u.kooperatif.lokasyon if u.kooperatif else None,
+    }
 
-@app.get("/orders")
-def get_orders(kullanici_id: Optional[int] = None, db: Session = Depends(get_db)):
-    query = db.query(Siparis)
-    if kullanici_id is not None:
-        query = query.filter(Siparis.kullanici_id == kullanici_id)
-    return query.all()
-
-@app.post("/orders", status_code=201)
-def create_order(order: OrderCreate, db: Session = Depends(get_db)):
-    urun = db.query(Urun).filter(Urun.id == order.urun_id).first()
-    if not urun:
-        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
-    
-    if urun.stok < order.adet:
-        raise HTTPException(status_code=400, detail="Yetersiz stok")
-        
-    yeni_siparis = Siparis(
-        urun_id=order.urun_id,
-        kullanici_id=order.kullanici_id,
-        adet=order.adet,
-        toplam_fiyat=urun.birim_fiyat * order.adet,
-        kargo_no=order.musteri_adi if order.musteri_adi else "Bekliyor",
-        durum="Hazırlanıyor"
-    )
-    
-    # Stok düş
-    urun.stok -= order.adet
-    
-    db.add(yeni_siparis)
+@app.post("/products")
+def create_product(body: ProductCreate, db: Session = Depends(get_db)):
+    urun = Urun(isim=body.isim, stok=body.stok, birim_fiyat=body.birim_fiyat, kooperatif_id=body.kooperatif_id)
+    db.add(urun)
     db.commit()
-    db.refresh(yeni_siparis)
-    return yeni_siparis
+    db.refresh(urun)
+    return {"id": urun.id, "isim": urun.isim}
 
+@app.put("/products/{product_id}")
+def update_product(product_id: int, body: ProductCreate, db: Session = Depends(get_db)):
+    urun = db.query(Urun).filter(Urun.id == product_id).first()
+    if not urun:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    urun.isim = body.isim
+    urun.stok = body.stok
+    urun.birim_fiyat = body.birim_fiyat
+    urun.kooperatif_id = body.kooperatif_id
+    db.commit()
+    db.refresh(urun)
+    return {"id": urun.id, "isim": urun.isim}
+
+@app.delete("/products/{product_id}")
+def delete_product(product_id: int, db: Session = Depends(get_db)):
+    urun = db.query(Urun).filter(Urun.id == product_id).first()
+    if not urun:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    db.delete(urun)
+    db.commit()
+    return {"ok": True}
+
+# 5.2 Siparişler (Orders)
+@app.get("/orders")
+def get_all_orders(db: Session = Depends(get_db)):
+    rows = db.query(Siparis).options(joinedload(Siparis.urun)).order_by(desc(Siparis.id)).all()
+    return [
+        {
+            "id": s.id,
+            "urun_id": s.urun_id,
+            "urun_adi": s.urun.isim if s.urun else None,
+            "adet": s.adet,
+            "durum": s.durum,
+            "kargo_no": s.kargo_no,
+            "siparis_tarihi": s.siparis_tarihi.isoformat() if s.siparis_tarihi else None,
+            "toplam_fiyat": round(s.adet * s.urun.birim_fiyat, 2) if s.urun else None,
+        }
+        for s in rows
+    ]
+
+@app.post("/orders")
+def create_order(body: OrderCreate, db: Session = Depends(get_db)):
+    urun = db.query(Urun).filter(Urun.id == body.urun_id).first()
+    if not urun:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    if urun.stok < body.adet:
+        raise HTTPException(status_code=400, detail="Yetersiz stok")
+    urun.stok -= body.adet
+    siparis = Siparis(urun_id=body.urun_id, adet=body.adet, durum="Hazırlanıyor")
+    db.add(siparis)
+    db.commit()
+    db.refresh(siparis)
+    return {
+        "siparis_id": siparis.id,
+        "urun_adi": urun.isim,
+        "adet": siparis.adet,
+        "durum": siparis.durum,
+        "toplam_fiyat": round(siparis.adet * urun.birim_fiyat, 2),
+    }
+
+# 5.3 Kooperatifler (Cooperatives)
+@app.get("/cooperatives")
+def get_cooperatives(db: Session = Depends(get_db)):
+    return [
+        {"id": k.id, "isim": k.isim, "lokasyon": k.lokasyon, "hikaye": k.hikaye}
+        for k in db.query(Kooperatif).all()
+    ]
+
+# 5.4 Chat (AI Multi-Agent)
 @app.post("/chat")
-async def chat_endpoint(request: ChatRequest):
+def chat_endpoint(request: ChatRequest):
     reply = get_agent_response(request.message)
     return {"reply": reply}
 
+# 5.5 Analitik (Analytics)
 @app.get("/analytics/top-selling")
 def top_selling_products(db: Session = Depends(get_db)):
-    return crud.get_top_5_selling_products(db)
+    results = (
+        db.query(
+            Urun.isim,
+            func.sum(Siparis.adet).label("toplam_satis"),
+            Urun.stok,
+        )
+        .join(Siparis, Urun.id == Siparis.urun_id)
+        .group_by(Urun.id)
+        .order_by(desc("toplam_satis"))
+        .limit(5)
+        .all()
+    )
+    return [
+        {"urun_adi": isim, "toplam_satis": int(satis), "mevcut_stok": stok}
+        for isim, satis, stok in results
+    ]
 
 @app.get("/analytics/stock-predictions")
 def stock_predictions(db: Session = Depends(get_db)):
     return crud.predict_stock_depletion(db)
 
-
-@app.get("/admin/logistics-report")
-def read_logistics_report(db: Session = Depends(get_db)):
-    report = get_logistics_performance_report(db)
-
-    # Stratejik Plan: Kritik risk varsa Telegram'dan yöneticiye fırlat
-    for firma in report:
-        if "YÜKSEK RİSK" in firma["risk_durumu"]:
-            mesaj = f"⚠️ LOJİSTİK RİSK UYARISI: {firma['kargo_firmasi']} firmasında gecikme oranı %{firma['gecikme_orani']} seviyesine çıktı!"
-            send_telegram_alert(mesaj)  # Plana sadık kalarak bildirimi gönderiyoruz
-
-    return report
+# 5.6 Uyarılar (Alerts)
 @app.get("/alerts")
 def get_system_alerts(db: Session = Depends(get_db)):
-
     kritik_urunler = db.query(Urun).filter(Urun.stok < 10).all()
     stok_alarmlari = [{"urun_adi": u.isim, "kalan_stok": u.stok} for u in kritik_urunler]
 
-    geciken_siparisler = db.query(Siparis).filter(Siparis.durum == "Gecikti").all()
-    kargo_alarmlari = [{"siparis_id": s.id, "urun_adi": s.urun.isim} for s in geciken_siparisler]
+    geciken_siparisler = db.query(Siparis).options(joinedload(Siparis.urun)).filter(Siparis.durum == "Gecikti").all()
+    kargo_alarmlari = [{"siparis_id": s.id, "urun_adi": s.urun.isim if s.urun else "?"} for s in geciken_siparisler]
 
-    # 2. Telegram Bildirimi
     if len(stok_alarmlari) > 0:
         msg = f"⚠️ Dikkat! {len(stok_alarmlari)} ürün kritik stok seviyesinde! Hemen kontrol et."
         send_telegram_alert(msg)
@@ -159,10 +246,20 @@ def get_system_alerts(db: Session = Depends(get_db)):
     return {
         "stok_alarmlari": stok_alarmlari,
         "kargo_alarmlari": kargo_alarmlari,
-        "toplam_risk_sayisi": len(stok_alarmlari) + len(kargo_alarmlari)
+        "toplam_risk_sayisi": len(stok_alarmlari) + len(kargo_alarmlari),
     }
-# 5. SERVER START
+
+# 5.7 Lojistik Rapor (Admin)
+@app.get("/admin/logistics-report")
+def read_logistics_report(db: Session = Depends(get_db)):
+    report = get_logistics_performance_report(db)
+    for firma in report:
+        if "YÜKSEK RİSK" in firma["risk_durumu"]:
+            mesaj = f"⚠️ LOJİSTİK RİSK UYARISI: {firma['kargo_firmasi']} firmasında gecikme oranı %{firma['gecikme_orani']} seviyesine çıktı!"
+            send_telegram_alert(mesaj)
+    return report
+
+# 6. SERVER START
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
