@@ -4,6 +4,23 @@ import { useParams, Link } from "react-router-dom";
 import { getProduct, type Product } from "../api/services";
 import { useCart } from "../context/CartContext";
 
+const EMOJI_MAP: Record<string, string> = {
+  sabun: "🧼", şal: "🧣", zahter: "🌿", kekik: "🌿",
+  peynir: "🧀", baharat: "🫙", çanta: "👜",
+  biber: "🌶", nar: "🍇", zeytin: "🫒", zeytinyağı: "🫒",
+  salça: "🥫", yoğurt: "🥛", ceviz: "🌰", kabak: "🥧",
+  reçel: "🍯", şurup: "🍶", künefe: "🧀", ipek: "🧣",
+  sabunu: "🧼", zeytini: "🫒",
+};
+
+function productEmoji(name: string): string {
+  const lower = name.toLocaleLowerCase("tr-TR");
+  for (const [key, emoji] of Object.entries(EMOJI_MAP)) {
+    if (lower.includes(key.toLocaleLowerCase("tr-TR"))) return emoji;
+  }
+  return "🌾";
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [product, setProduct] = useState<Product | null>(null);
@@ -50,10 +67,21 @@ export default function ProductDetailPage() {
           border: "1px solid var(--border)",
           borderRadius: "var(--radius)",
           aspectRatio: "1",
+          overflow: "hidden",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "7rem",
         }}>
-          🌾
+          <img
+            src={`/urun_foto/${product.id}.png`}
+            alt={product.isim}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            onError={(e) => {
+              const img = e.currentTarget;
+              img.style.display = "none";
+              const parent = img.parentElement!;
+              parent.style.fontSize = "7rem";
+              parent.textContent = productEmoji(product.isim);
+            }}
+          />
         </div>
         {/* Info */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>

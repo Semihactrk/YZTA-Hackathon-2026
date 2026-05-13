@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCart, type CartItem } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 import { createOrder } from "../api/services";
 import { saveMyOrderIds } from "./OrdersPage";
 
@@ -24,6 +25,7 @@ type Step = "form" | "success";
 
 export default function CheckoutPage() {
   const { items, total, clear } = useCart();
+  const { user } = useAuth();
   const [form, setForm] = useState<FormData>(EMPTY);
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [loading, setLoading] = useState(false);
@@ -31,7 +33,6 @@ export default function CheckoutPage() {
   const [step, setStep] = useState<Step>("form");
   const [orderIds, setOrderIds] = useState<number[]>([]);
 
-  // Sepet boşsa mağazaya yönlendir
   if (items.length === 0 && step === "form") {
     return (
       <div className="flex-center" style={{ minHeight: "80vh", flexDirection: "column", gap: "1rem" }}>
@@ -76,8 +77,8 @@ export default function CheckoutPage() {
         });
         placed.push(res.siparis_id);
       }
-      // Sipariş ID'lerini localStorage'a kaydet (müşteri sipariş takibi için)
-      saveMyOrderIds(placed);
+      // Siparişleri kullanıcıya bağlı anahtara kaydet
+      saveMyOrderIds(placed, user?.id);
       setOrderIds(placed);
       clear();
       setStep("success");
@@ -112,7 +113,6 @@ export default function CheckoutPage() {
   // ── Form ekranı ──────────────────────────────────────────────────────────
   return (
     <div className="container page" style={{ maxWidth: 900 }}>
-      {/* Geri butonu */}
       <Link
         to="/"
         style={{ color: "var(--text-3)", fontSize: "0.85rem", marginBottom: "2rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
@@ -132,7 +132,6 @@ export default function CheckoutPage() {
         {/* ── Sol: Form ─────────────────────────────────────────────────── */}
         <form onSubmit={handleSubmit} noValidate>
 
-          {/* Kişisel Bilgiler */}
           <div className="card" style={{ marginBottom: "1.25rem" }}>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1.25rem", color: "var(--text)" }}>
               👤 Kişisel Bilgiler
@@ -161,7 +160,6 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Teslimat Adresi */}
           <div className="card" style={{ marginBottom: "1.5rem" }}>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1.25rem", color: "var(--text)" }}>
               📍 Teslimat Adresi
@@ -212,10 +210,8 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* API Hatası */}
           {apiError && <div className="error-msg" style={{ marginBottom: "1rem" }}>{apiError}</div>}
 
-          {/* Gönder */}
           <button
             type="submit"
             className="btn btn-primary"
@@ -257,32 +253,16 @@ export default function CheckoutPage() {
               ))}
             </div>
 
-            {/* Kargo satırı */}
-            <div
-              style={{
-                display: "flex", justifyContent: "space-between",
-                padding: "0.6rem 0", borderTop: "1px solid var(--border)",
-                fontSize: "0.85rem", color: "var(--text-2)",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "0.6rem 0", borderTop: "1px solid var(--border)", fontSize: "0.85rem", color: "var(--text-2)" }}>
               <span>🚚 Kargo</span>
               <span className="badge badge-green">Ücretsiz</span>
             </div>
 
-            {/* Toplam */}
-            <div
-              style={{
-                display: "flex", justifyContent: "space-between",
-                padding: "0.8rem 0 0",
-                borderTop: "1px solid var(--border-2)",
-                fontWeight: 700, fontSize: "1.1rem",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "0.8rem 0 0", borderTop: "1px solid var(--border-2)", fontWeight: 700, fontSize: "1.1rem" }}>
               <span>Toplam</span>
               <span style={{ color: "var(--accent)" }}>₺{total.toFixed(2)}</span>
             </div>
 
-            {/* Güven ikonları */}
             <div style={{ marginTop: "1.25rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
               {["🔒 Güvenli ödeme", "🌿 El emeği ürünler", "♻ Doğal & organik"].map((t) => (
                 <div key={t} style={{ fontSize: "0.78rem", color: "var(--text-3)", display: "flex", alignItems: "center", gap: "0.35rem" }}>{t}</div>

@@ -10,6 +10,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+class Kullanici(Base):
+    __tablename__ = "kullanicilar"
+
+    id = Column(Integer, primary_key=True, index=True)
+    isim = Column(String)
+    email = Column(String, unique=True, index=True)
+    sifre = Column(String)
+    rol = Column(String, default="customer")
+
 class Kooperatif(Base):
     __tablename__ = "kooperatifler"
 
@@ -59,8 +68,17 @@ def seed_data():
     db = SessionLocal()
     # Veritabanında zaten veri varsa ekleme yapma
     if db.query(Kooperatif).first():
+        # But maybe we don't have an admin, check it
+        if not db.query(Kullanici).filter(Kullanici.email == "admin@admin.com").first():
+            admin_user = Kullanici(isim="Admin", email="admin@admin.com", sifre="1234", rol="admin")
+            db.add(admin_user)
+            db.commit()
         db.close()
         return
+
+    admin_user = Kullanici(isim="Admin", email="admin@admin.com", sifre="1234", rol="admin")
+    db.add(admin_user)
+    db.commit()
 
     # Kooperatifleri Ekle
     koop1 = Kooperatif(isim="Defne Kadın Kooperatifi", hikaye="Deprem sonrası kadınların bir araya gelerek kurduğu, el emeği sabun ve dokuma ürünleri üreten dayanışma kooperatifi.", lokasyon="Defne, Hatay")
