@@ -66,6 +66,7 @@ class AjanLog(Base):
 
 def seed_data():
     db = SessionLocal()
+    # Veritabanında zaten veri varsa ekleme yapma
     if db.query(Kooperatif).first():
         # But maybe we don't have an admin, check it
         if not db.query(Kullanici).filter(Kullanici.email == "admin@admin.com").first():
@@ -113,7 +114,7 @@ def seed_data():
         Urun(isim="Ceviz Reçeli", stok=50, birim_fiyat=190.0, kooperatif_id=koop3.id),
         Urun(isim="Turunç Reçeli", stok=70, birim_fiyat=140.0, kooperatif_id=koop3.id),
         Urun(isim="Karadut Şurubu", stok=110, birim_fiyat=130.0, kooperatif_id=koop3.id),
-        Urun(isim="Künefe Peyniri", stok=25, birim_fiyat=200.0, kooperatif_id=koop3.id),
+        Urun(isim="Künefe Peyniri", stok=5, birim_fiyat=200.0, kooperatif_id=koop3.id),
     ]
 
     db.add_all(urunler)

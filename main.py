@@ -7,16 +7,28 @@ from sqlalchemy import func, desc
 from agents import get_agent_response, send_telegram_alert
 import crud
 import database
-from database import Urun, Siparis, Kooperatif, Kullanici, init_db
+from database import Urun, Siparis, Kooperatif, Kullanici
 from fastapi.middleware.cors import CORSMiddleware
 from crud import get_logistics_performance_report
+from contextlib import asynccontextmanager
 
-app = FastAPI()
 
-#Urun fotografları
+# 1. LIFESPAN (STARTUP/SHUTDOWN) TANIMLAMASI
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Uygulama açılırken yapılacaklar
+    print("Toprak Ana Sistemi Başlatılıyor...")
+    yield
+    # Uygulama kapanırken yapılacaklar
+    print("Sistem Kapatılıyor...")
+
+
+# 2. APP NESNESİNİN TEK SEFERDE OLUŞTURULMASI
+app = FastAPI(lifespan=lifespan)
+
+# 3. STATİK DOSYALAR VE CORS AYARLARI (TEK APP ÜZERİNE)
 app.mount("/urun_foto", StaticFiles(directory="urun_foto"), name="urun_foto")
 
-# 1. CORS AYARLARI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,7 +37,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. DEPENDENCY
+
+# 4. DEPENDENCY
 def get_db():
     db = database.SessionLocal()
     try:
@@ -33,23 +46,22 @@ def get_db():
     finally:
         db.close()
 
-# 3. STARTUP
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
-# 4. MODELLER (Pydantic)
+# 5. MODELLER (Pydantic)
 class ChatRequest(BaseModel):
     message: str
+
 
 class LoginRequest(BaseModel):
     email: str
     password: str
 
+
 class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
+
 
 class ProductCreate(BaseModel):
     isim: str
@@ -57,12 +69,14 @@ class ProductCreate(BaseModel):
     birim_fiyat: float = 0.0
     kooperatif_id: Optional[int] = None
 
+
 class OrderCreate(BaseModel):
     urun_id: int
     adet: int = 1
     musteri_adi: Optional[str] = None
 
-# 5. ENDPOINTLER
+
+# 6. ENDPOINTLER
 
 @app.post("/register")
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -75,12 +89,13 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(yeni_kullanici)
     return {"success": True, "message": "Kayıt başarılı"}
 
+
 @app.post("/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     kullanici = db.query(Kullanici).filter(Kullanici.email == req.email, Kullanici.sifre == req.password).first()
     if not kullanici:
         raise HTTPException(status_code=401, detail="Hatalı kullanıcı adı veya şifre")
-    
+
     return {
         "success": True,
         "token": f"mock-token-{kullanici.id}",
@@ -92,7 +107,8 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         }
     }
 
-# 5.1 Ürünler (Products)
+
+# 6.1 Ürünler (Products)
 @app.get("/products")
 def get_all_products(db: Session = Depends(get_db)):
     rows = db.query(Urun).options(joinedload(Urun.kooperatif)).all()
@@ -107,6 +123,7 @@ def get_all_products(db: Session = Depends(get_db)):
         }
         for u in rows
     ]
+
 
 @app.get("/products/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
@@ -124,6 +141,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         "kooperatif_lokasyon": u.kooperatif.lokasyon if u.kooperatif else None,
     }
 
+
 @app.post("/products")
 def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     urun = Urun(isim=body.isim, stok=body.stok, birim_fiyat=body.birim_fiyat, kooperatif_id=body.kooperatif_id)
@@ -131,6 +149,7 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(urun)
     return {"id": urun.id, "isim": urun.isim}
+
 
 @app.put("/products/{product_id}")
 def update_product(product_id: int, body: ProductCreate, db: Session = Depends(get_db)):
@@ -145,6 +164,7 @@ def update_product(product_id: int, body: ProductCreate, db: Session = Depends(g
     db.refresh(urun)
     return {"id": urun.id, "isim": urun.isim}
 
+
 @app.delete("/products/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     urun = db.query(Urun).filter(Urun.id == product_id).first()
@@ -154,7 +174,8 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
-# 5.2 Siparişler (Orders)
+
+# 6.2 Siparişler (Orders)
 @app.get("/orders")
 def get_all_orders(db: Session = Depends(get_db)):
     rows = db.query(Siparis).options(joinedload(Siparis.urun)).order_by(desc(Siparis.id)).all()
@@ -171,6 +192,7 @@ def get_all_orders(db: Session = Depends(get_db)):
         }
         for s in rows
     ]
+
 
 @app.post("/orders")
 def create_order(body: OrderCreate, db: Session = Depends(get_db)):
@@ -192,7 +214,8 @@ def create_order(body: OrderCreate, db: Session = Depends(get_db)):
         "toplam_fiyat": round(siparis.adet * urun.birim_fiyat, 2),
     }
 
-# 5.3 Kooperatifler (Cooperatives)
+
+# 6.3 Kooperatifler (Cooperatives)
 @app.get("/cooperatives")
 def get_cooperatives(db: Session = Depends(get_db)):
     return [
@@ -200,13 +223,15 @@ def get_cooperatives(db: Session = Depends(get_db)):
         for k in db.query(Kooperatif).all()
     ]
 
-# 5.4 Chat (AI Multi-Agent)
+
+# 6.4 Chat (AI Multi-Agent)
 @app.post("/chat")
 def chat_endpoint(request: ChatRequest):
     reply = get_agent_response(request.message)
     return {"reply": reply}
 
-# 5.5 Analitik (Analytics)
+
+# 6.5 Analitik (Analytics)
 @app.get("/analytics/top-selling")
 def top_selling_products(db: Session = Depends(get_db)):
     results = (
@@ -226,11 +251,13 @@ def top_selling_products(db: Session = Depends(get_db)):
         for isim, satis, stok in results
     ]
 
+
 @app.get("/analytics/stock-predictions")
 def stock_predictions(db: Session = Depends(get_db)):
     return crud.predict_stock_depletion(db)
 
-# 5.6 Uyarılar (Alerts)
+
+# 6.6 Uyarılar (Alerts)
 @app.get("/alerts")
 def get_system_alerts(db: Session = Depends(get_db)):
     kritik_urunler = db.query(Urun).filter(Urun.stok < 10).all()
@@ -249,7 +276,8 @@ def get_system_alerts(db: Session = Depends(get_db)):
         "toplam_risk_sayisi": len(stok_alarmlari) + len(kargo_alarmlari),
     }
 
-# 5.7 Lojistik Rapor (Admin)
+
+# 6.7 Lojistik Rapor (Admin)
 @app.get("/admin/logistics-report")
 def read_logistics_report(db: Session = Depends(get_db)):
     report = get_logistics_performance_report(db)
@@ -259,7 +287,9 @@ def read_logistics_report(db: Session = Depends(get_db)):
             send_telegram_alert(mesaj)
     return report
 
-# 6. SERVER START
+
+# 7. SERVER START
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
