@@ -369,5 +369,5 @@ Bu proje **YZTA Hackathon 2026** kapsamında geliştirilmiştir.
 
 ---
 <div align="center">
-  <sub>Made with ❤️ and ☕</sub>
+  <sub>Made with ❤️ and ☕ — by 307. Takım </sub>
 </div>
