@@ -1,4 +1,4 @@
-# 🌿 Toprak Ana — Kadın Kooperatifi E-Ticaret Platformu
+# 🌿 Toprak Ana — Yapay Zeka Destekli Kooperatif Pazaryeri
 
 > **YZTA Hackathon 2026** için geliştirilmiş, yapay zeka destekli, çok-ajanlı kadın kooperatifi pazaryeri uygulaması.
 
